@@ -1,3 +1,19 @@
+const express = require('express');
+const cors = require('cors');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); // Stripe key from Render
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json());
+
+// Health check (optional)
+app.get('/', (req, res) => {
+  res.send('✅ Stripe backend is running.');
+});
+
+// Stripe Checkout session route
 app.post('/create-checkout-session', async (req, res) => {
   console.log("✅ Received request:", req.body);
 
@@ -14,7 +30,7 @@ app.post('/create-checkout-session', async (req, res) => {
         price_data: {
           currency: 'usd',
           product_data: { name: 'Chrome Extension' },
-          unit_amount: amount,
+          unit_amount: amount, // amount in cents
         },
         quantity: 1,
       }],
@@ -30,4 +46,9 @@ app.post('/create-checkout-session', async (req, res) => {
     console.error('❌ Stripe error:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });

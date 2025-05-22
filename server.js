@@ -1,16 +1,6 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const Stripe = require('stripe');
-const app = express();
-
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-const PORT = process.env.PORT || 3000;
-
-app.use(cors());
-app.use(express.json());
-
 app.post('/create-checkout-session', async (req, res) => {
+  console.log("✅ Received request:", req.body);
+
   const { amount } = req.body;
 
   if (!amount) {
@@ -23,7 +13,7 @@ app.post('/create-checkout-session', async (req, res) => {
       line_items: [{
         price_data: {
           currency: 'usd',
-          product_data: { name: 'Chrome Extension Subscription' },
+          product_data: { name: 'Chrome Extension' },
           unit_amount: amount,
         },
         quantity: 1,
@@ -33,10 +23,11 @@ app.post('/create-checkout-session', async (req, res) => {
       cancel_url: 'https://google.com',
     });
 
+    console.log("✅ Stripe session created:", session.url);
     res.json({ url: session.url });
+
   } catch (err) {
+    console.error('❌ Stripe error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

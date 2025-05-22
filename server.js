@@ -1,14 +1,15 @@
 const express = require('express');
 const cors = require('cors');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); // Stripe key from Render
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ✅ Enable CORS for all origins (for localhost testing)
 app.use(cors());
 app.use(express.json());
 
-// Health check (optional)
+// Optional health check
 app.get('/', (req, res) => {
   res.send('✅ Stripe backend is running.');
 });

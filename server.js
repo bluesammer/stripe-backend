@@ -1,26 +1,24 @@
 const express = require("express");
-const app = express();
 const bodyParser = require("body-parser");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+const app = express();
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 const premiumEmails = new Set();
 
-app.use(bodyParser.json());
-
 // Health check
 app.get("/", (req, res) => {
-  res.send("✅ Server is live");
+  res.send("Server is up");
 });
 
-// Check if email is premium
+// Check premium status
 app.get("/is-premium", (req, res) => {
   const email = req.query.email;
-  const isPremium = premiumEmails.has(email);
-  res.json({ premium: isPremium });
+  res.json({ premium: premiumEmails.has(email) });
 });
 
-// Stripe webhook
+// MUST use raw body for Stripe webhook verification!
 app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
@@ -28,7 +26,7 @@ app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) =>
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
-    console.error("❌ Webhook error:", err.message);
+    console.error("⚠️ Webhook error:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -39,12 +37,14 @@ app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) =>
 
     if (email) {
       premiumEmails.add(email);
-      console.log(`✅ Premium unlocked for: ${email}`);
+      console.log("✅ Premium email added:", email);
     }
   }
 
-  res.sendStatus(200);
+  res.status(200).send();
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log("🚀 Server listening on port", PORT);
+});

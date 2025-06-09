@@ -1,46 +1,50 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const Stripe = require("stripe");
 
 const app = express();
+const port = process.env.PORT || 3000;
+
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-// ✅ Only use raw body on /webhook
-app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) => {
+let premiumEmails = new Set();
+
+app.use("/webhook", bodyParser.raw({ type: "application/json" }));
+app.use(express.json()); // For everything else
+
+app.post("/webhook", (req, res) => {
   const sig = req.headers["stripe-signature"];
+
   let event;
 
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
-    console.error("Webhook error:", err.message);
+    console.error("Webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    const email = session.customer_details?.email;
-    if (email) {
-      premiumEmails.add(email);
-      console.log("✅ Premium unlocked for:", email);
+    const customerEmail = session.customer_details?.email;
+    if (customerEmail) {
+      premiumEmails.add(customerEmail);
+      console.log("✅ Premium email added:", customerEmail);
+    } else {
+      console.warn("❌ No email found in session.");
     }
   }
 
-  res.send();
-});
-
-// ✅ Only after webhook route — use JSON for everything else
-app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.send("Server is live");
+  res.status(200).send();
 });
 
 app.get("/is-premium", (req, res) => {
   const email = req.query.email;
-  res.json({ premium: premiumEmails.has(email) });
+  const isPremium = email && premiumEmails.has(email);
+  res.json({ premium: isPremium });
 });
 
-const premiumEmails = new Set();
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(port, () => {
+  console.log(`✅ Volume Max Webhook Server is running on port ${port}`);
+});

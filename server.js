@@ -1,29 +1,21 @@
 const express = require('express');
-const fs = require('fs');
 const app = express();
 const bodyParser = require('body-parser');
-const rateLimit = require('express-rate-limit');
-
-const premiumEmails = new Set();
-
-// 🟢 Load saved emails on startup
-if (fs.existsSync('premium.json')) {
-  const savedEmails = JSON.parse(fs.readFileSync('premium.json'));
-  savedEmails.forEach(email => premiumEmails.add(email));
-  console.log(`🔁 Loaded ${savedEmails.length} premium emails from file`);
-}
-
-// Stripe setup
 const stripe = require('stripe')('YOUR_STRIPE_SECRET_KEY');
-const endpointSecret = 'YOUR_ENDPOINT_SECRET';
+const endpointSecret = 'YOUR_STRIPE_ENDPOINT_SECRET';
+const admin = require('firebase-admin');
+const fs = require('fs');
 
-// JSON + raw body for Stripe
+// 🔐 Firebase setup
+const serviceAccount = require('./firebaseKey.json');
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+const db = admin.firestore();
+
 app.use(bodyParser.json());
 app.use(bodyParser.raw({ type: 'application/json' }));
-
-// Rate limit fix
 app.set('trust proxy', 1);
-app.use(rateLimit({ windowMs: 60 * 1000, max: 100 }));
 
 // ✅ Stripe webhook
 app.post('/webhook', (req, res) => {
@@ -39,19 +31,21 @@ app.post('/webhook', (req, res) => {
   if (event.type === 'checkout.session.completed') {
     const email = event.data.object.customer_email;
     if (email) {
-      premiumEmails.add(email);
-      fs.writeFileSync('premium.json', JSON.stringify([...premiumEmails]));
-      console.log(`✅ Added and saved premium email: ${email}`);
+      db.collection('premium_users').doc(email).set({
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`✅ Saved ${email} to Firestore`);
     }
   }
 
   res.sendStatus(200);
 });
 
-// ✅ Premium checker
-app.get('/is-premium', (req, res) => {
+// ✅ Premium check endpoint
+app.get('/is-premium', async (req, res) => {
   const email = req.query.email;
-  const isPremium = premiumEmails.has(email);
+  const doc = await db.collection('premium_users').doc(email).get();
+  const isPremium = doc.exists;
   console.log(`🔎 Checked premium for ${email}: ${isPremium}`);
   res.json({ premium: isPremium });
 });

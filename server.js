@@ -2,47 +2,63 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
-const premiumEmails = new Set();
+const fs = require('fs');
+const path = require('path');
 
-app.use(bodyParser.json());
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+const PORT = process.env.PORT || 3000;
 
-// Webhook endpoint to listen for Stripe events
+// Save emails of paying users
+const PREMIUM_FILE = path.join(__dirname, 'premium_users.json');
+function addPremiumEmail(email) {
+  let users = [];
+  if (fs.existsSync(PREMIUM_FILE)) {
+    users = JSON.parse(fs.readFileSync(PREMIUM_FILE));
+  }
+  if (!users.includes(email)) {
+    users.push(email);
+    fs.writeFileSync(PREMIUM_FILE, JSON.stringify(users));
+  }
+}
+
+function isPremiumEmail(email) {
+  if (!fs.existsSync(PREMIUM_FILE)) return false;
+  const users = JSON.parse(fs.readFileSync(PREMIUM_FILE));
+  return users.includes(email);
+}
+
+// Routes
+app.use(express.json());
+
+app.get('/is-premium', (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.json({ premium: false });
+  return res.json({ premium: isPremiumEmail(email) });
+});
+
+// Stripe webhook
 app.post('/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
-    console.error('❌ Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    console.log('Webhook signature verification failed.', err.message);
+    return res.sendStatus(400);
   }
 
-  // Handle the event
+  // Handle the checkout.session.completed event
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    const email = session.customer_email;
-
+    const email = session.customer_details?.email;
     if (email) {
-      console.log('✅ Premium activated for:', email);
-      premiumEmails.add(email.toLowerCase());
+      console.log(`✅ Adding premium user: ${email}`);
+      addPremiumEmail(email);
     }
   }
 
-  res.status(200).send({ received: true });
+  res.sendStatus(200);
 });
 
-// Premium check endpoint
-app.get('/is-premium', (req, res) => {
-  const email = (req.query.email || '').toLowerCase();
-  const isPremium = premiumEmails.has(email);
-  res.json({ premium: isPremium });
-});
-
-app.listen(process.env.PORT || 3000, () => {
-  console.log('✅ Volume Max Webhook Server is running');
-});
+app.listen(PORT, () => console.log(`✅ Volume Max Webhook Server running on port ${PORT}`));

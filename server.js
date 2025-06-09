@@ -3,17 +3,27 @@ const app = express();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const bodyParser = require('body-parser');
 
+// Health check
+app.get('/', (req, res) => {
+  res.send('✅ Volume Max Webhook Server is running');
+});
+
+// Stripe raw body parser for webhook
 app.use(bodyParser.raw({ type: 'application/json' }));
 
 app.post('/webhook', (req, res) => {
   const sig = req.headers['stripe-signature'];
-
   let event;
+
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
   } catch (err) {
-    console.error('⚠️ Webhook signature verification failed.', err.message);
-    return res.sendStatus(400);
+    console.error('❌ Webhook Error:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   if (event.type === 'checkout.session.completed') {
@@ -21,11 +31,7 @@ app.post('/webhook', (req, res) => {
     console.log(`✅ Payment received from: ${session.customer_email}`);
   }
 
-  res.json({ received: true });
+  res.status(200).json({ received: true });
 });
 
-app.get('/', (req, res) => {
-  res.send('Volume Max Webhook Server is running');
-});
-
-app.listen(3000, () => console.log('🚀 Server running on port 3000'));
+app.listen(3000, () => console.log('🚀 Volume Max Webhook server running on port 3000'));
